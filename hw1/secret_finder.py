@@ -1,5 +1,4 @@
 import requests
-import time
 from parser import Parser
 
 BASE_URL = 'http://hw1.alexbers.com'
@@ -10,9 +9,7 @@ parser = Parser(session, BASE_URL)
 response = session.get(BASE_URL)
 
 while True:
-    print(f"Текущий статус: {response.status_code}")
-    if "секрет" in response.text.lower() or "secret" in response.text.lower():
-        print("Финальный результат:")
+    if "секрет" in response.text.lower():
         print(response.text)
         break
 
