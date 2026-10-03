@@ -38,3 +38,4 @@ while True:
         print(e)
         print(prev_resp)
         print(response.text)
+        break

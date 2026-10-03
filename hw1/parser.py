@@ -243,11 +243,12 @@ class Parser:
             cmd.append(url)
 
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=15
+                cmd, capture_output=True, check=True, timeout=15
             )
             response = requests.Response()
             response.status_code = 200
-            response._content = result.stdout.encode("utf-8")
+            response._content = result.stdout
+            response.encoding = "utf-8"
             return response
         finally:
             for path in temp_files:
