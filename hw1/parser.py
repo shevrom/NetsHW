@@ -1,5 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
+from typing import Literal
+
+import os
+import subprocess
+import tempfile
+from urllib.parse import urlencode
+
+ParseType = Literal["py_lib", "curl"]
 
 
 class Parser:
@@ -8,8 +16,8 @@ class Parser:
         self.session = session
         self.root = root
 
-    def parse(self, response: requests.Response) -> requests.Response:
-        soup = BeautifulSoup(response.text, "html.parser")
+    def parse(self, response: requests.Response, parse_type: ParseType = "py_lib") -> requests.Response:
+        soup = BeautifulSoup(response.text, "lxml")
         next_url = self._get_next_url(soup, response.text)
 
         cookies = {}
@@ -39,35 +47,29 @@ class Parser:
                 elif "формы" in prev_text or "form" in prev_text:
                     form_data.update(rows_data)
 
-        auth_user = self.session.cookies.get("user", "c4f6ff551fe6b8e282156c31e9270ab5")
-        self.session.cookies.clear()
-
-        self.session.cookies.set("user", auth_user)
-        if cookies:
-            self.session.cookies.update(cookies)
-
         is_post = bool(files or form_data) or "post" in response.text.lower()
 
-        if is_post:
-            kwargs = {}
-            if headers:
-                kwargs["headers"] = headers
-            if form_data:
-                kwargs["data"] = form_data
-            if files:
-                kwargs["files"] = files
-            if params:
-                kwargs["params"] = params
-
-            return self.session.post(next_url, **kwargs)
-        else:
-            kwargs = {}
-            if headers:
-                kwargs["headers"] = headers
-            if params:
-                kwargs["params"] = params
-
-            return self.session.get(next_url, **kwargs)
+        if parse_type == "py_lib":
+            return self._make_pylib_request(
+                url=next_url,
+                headers=headers,
+                cookies=cookies,
+                params=params,
+                form_data=form_data,
+                files=files,
+                is_post=is_post
+            )
+        elif parse_type == "curl":
+            return self._make_curl_request(
+                url=next_url,
+                headers=headers,
+                cookies=cookies,
+                params=params,
+                form_data=form_data,
+                files=files,
+                is_post=is_post,
+            )
+        raise ValueError(f"Invalid parse_type: {parse_type}")
 
     def _get_next_url(self, soup: BeautifulSoup, response_text: str) -> str:
         link_tag = soup.find("a")
@@ -93,3 +95,103 @@ class Parser:
                 value = cols[1].text.strip()
                 data[key] = value
         return data
+
+    def _make_pylib_request(
+            self,
+            url: str,
+            headers: dict = None,
+            cookies: dict = None,
+            params: dict = None,
+            form_data: dict = None,
+            files: dict = None,
+            is_post: bool = False,
+    ):
+        auth_user = self.session.cookies.get("user", "c4f6ff551fe6b8e282156c31e9270ab5")
+        self.session.cookies.clear()
+
+        self.session.cookies.set("user", auth_user)
+        if cookies:
+            self.session.cookies.update(cookies)
+
+        if is_post:
+            kwargs = {}
+            if headers:
+                kwargs["headers"] = headers
+            if form_data:
+                kwargs["data"] = form_data
+            if files:
+                kwargs["files"] = files
+            if params:
+                kwargs["params"] = params
+
+            return self.session.post(url, **kwargs)
+        else:
+            kwargs = {}
+            if headers:
+                kwargs["headers"] = headers
+            if params:
+                kwargs["params"] = params
+
+            return self.session.get(url, **kwargs)
+
+    @staticmethod
+    def _make_curl_request(
+            url: str,
+            headers: dict = None,
+            cookies: dict = None,
+            params: dict = None,
+            form_data: dict = None,
+            files: dict = None,
+            is_post: bool = False,
+    ) -> requests.Response:
+        if params:
+            query = urlencode(params)
+            url = f"{url}?{query}" if "?" not in url else f"{url}&{query}"
+
+        cmd = ["curl", "-s", "-L"]
+
+        all_cookies = dict(cookies) if cookies else {}
+        all_cookies.setdefault("user", "c4f6ff551fe6b8e282156c31e9270ab5")
+
+        cookie_str = "; ".join([f"{k}={v}" for k, v in all_cookies.items()])
+        cmd.extend(["-b", cookie_str])
+
+        if headers:
+            for k, v in headers.items():
+                cmd.extend(["-H", f"{k}: {v}"])
+
+        temp_files = []
+        try:
+            if is_post:
+                cmd.extend(["-X", "POST"])
+                if files:
+                    if form_data:
+                        for k, v in form_data.items():
+                            cmd.extend(["-F", f"{k}={v}"])
+                    for k, (filename, content) in files.items():
+                        tmp = tempfile.NamedTemporaryFile(delete=False)
+                        tmp_write_data = (
+                            content
+                            if isinstance(content, bytes)
+                            else content.encode("utf-8")
+                        )
+                        tmp.write(tmp_write_data)
+                        tmp.close()
+                        temp_files.append(tmp.name)
+                        cmd.extend(["-F", f"{k}=@{tmp.name};filename={filename}"])
+                elif form_data:
+                    cmd.extend(["-d", urlencode(form_data)])
+
+            cmd.append(url)
+
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True
+            )
+            response = requests.Response()
+            response.status_code = 200
+            response._content = result.stdout.encode("utf-8")
+            return response
+        finally:
+            for path in temp_files:
+                if os.path.exists(path):
+                    os.remove(path)
