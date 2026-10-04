@@ -17,7 +17,7 @@ while True:
         time.sleep(0.1)
         steps += 1
 
-        response = parser.parse(response, "curl")
+        response = parser.parse(response, "py_lib")
         if "секрет" in response.text.lower():
             print(response.text)
             break

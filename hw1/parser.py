@@ -29,7 +29,7 @@ class Parser:
             parse_type: ParseType = "py_lib",
     ) -> requests.Response:
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(response.text, "lxml")
         next_url = self._get_next_url(soup, response.text)
 
         cookies = {}
@@ -111,19 +111,16 @@ class Parser:
         raise ValueError(f"Invalid parse_type: {parse_type}")
 
     def _get_next_url(self, soup: BeautifulSoup, response_text: str) -> str:
-        # 1. Поиск конструкции "по адресу <code>...</code>"
         match = re.search(
             r"по\s+адресу\s*<code>([^<]+)</code>", response_text, re.IGNORECASE
         )
         if match:
             url = match.group(1).strip()
         else:
-            # 2. Поиск ссылки <a>
             link_tag = soup.find("a")
             if link_tag and link_tag.get("href"):
                 url = link_tag["href"]
             else:
-                # 3. Первое совпадение <code>
                 code_tag = soup.find("code")
                 if code_tag:
                     url = code_tag.text.strip()
@@ -156,7 +153,6 @@ class Parser:
             files: dict = None,
             is_post: bool = False,
     ):
-        # Очищаем сессию от кук прошлых шагов
         self.session.cookies.clear()
 
         req_cookies = {"user": self.user_id}
