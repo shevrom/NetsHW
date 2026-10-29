@@ -50,7 +50,8 @@ def resolve_iteratively(
         # Если есть ответ, поиск завершён.
         if message["answers"]:
             print("Получен ответ!")
-            return message
+            return response
+            # return message
 
         print("Готового ответа нет, ищем следующий сервер.")
 
