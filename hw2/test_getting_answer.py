@@ -1,8 +1,8 @@
 import socket
 
-from dns_core import make_query
+from dns_query import make_query
 from hw2.dns_parser import parse_dns_packet
-from query import query_udp
+from transport import query_udp
 
 
 ROOT_SERVER_IP = "198.41.0.4"
@@ -14,7 +14,6 @@ query = make_query(
     "example.com",
     "A",
     request_id,
-    recursion_desired=False,
 )
 
 print(f"Отправляем запрос корневому серверу {ROOT_SERVER_IP}:53")
